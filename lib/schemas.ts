@@ -43,10 +43,13 @@ export const ExtractedOpportunityZodSchema = z.object({
 
 // Schema for /api/ai/extract-notice request
 export const NoticeExtractionRequestSchema = z.object({
-  text: z.string().optional(),
-  imageBase64: z.string().optional(),
-  pdfBase64: z.string().optional(),
-  mimeType: z.string().optional(),
+  // The browser sends `null` for the inactive input (for example, no upload).
+  // Accept it and normalize it to an omitted value instead of rejecting the
+  // entire request before extraction starts.
+  text: z.string().nullish().transform((value) => value?.trim() || undefined),
+  imageBase64: z.string().nullish().transform((value) => value || undefined),
+  pdfBase64: z.string().nullish().transform((value) => value || undefined),
+  mimeType: z.string().nullish().transform((value) => value || undefined),
   sourceType: z.enum(SOURCE_TYPES).default("WhatsApp forward"),
 });
 
@@ -58,7 +61,9 @@ export const OpportunityCreateSchema = z.object({
   description: z.string().min(10, "Description must be at least 10 characters"),
   eligibility: z.string().min(2, "Eligibility is required"),
   required_skills: z.array(z.string()).min(1, "At least one skill is required"),
-  deadline: z.string().min(1, "Deadline is required"),
+  deadline: z.string()
+    .min(1, "Deadline is required")
+    .refine((value) => !Number.isNaN(Date.parse(value)), "Enter a valid deadline date before saving"),
   event_date: z.string().optional().default(""),
   location: z.string().default("Online"),
   registration_url: z.string().url("Must be a valid URL"),
@@ -84,6 +89,7 @@ export const StudentProfileSchema = z.object({
   skills: z.array(z.string()).min(1, "Please provide at least 1 skill"),
   interests: z.array(z.string()).default([]),
   preferred_roles: z.array(z.string()).min(1, "Please provide at least 1 role"),
+  is_discoverable: z.boolean().optional(),
   experience_level: z.enum(["Beginner", "Intermediate", "Advanced"]),
   project_interests: z.string().default(""),
 });

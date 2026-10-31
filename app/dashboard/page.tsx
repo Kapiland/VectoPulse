@@ -2,62 +2,85 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { 
-  Sparkles, 
-  Clock, 
-  CheckCircle2, 
-  ArrowRight, 
-  FileText, 
-  Radio, 
-  Users, 
-  TrendingUp, 
-  Calendar, 
-  Bookmark, 
-  AlertTriangle,
+import Image from "next/image";
+import {
+  Sparkles,
+  Clock,
+  ArrowRight,
+  FileText,
+  Radio,
+  Users,
+  Bookmark,
   ExternalLink,
   ChevronRight,
-  Filter,
-  UserCheck
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import DemoModal from "@/components/DemoModal";
 import GemmaRelevanceModal from "@/components/GemmaRelevanceModal";
-import { INITIAL_OPPORTUNITIES, INITIAL_STUDENTS } from "@/lib/data/mock-data";
+import DeadlineReminderPanel from "@/components/DeadlineReminderPanel";
 import { Opportunity, Student } from "@/types";
+import { SavedOpportunity } from "@/types";
 import { formatTimeRemaining } from "@/lib/utils";
 
 export default function DashboardPage() {
-  const [demoModalOpen, setDemoModalOpen] = useState(false);
-  const [activeStudent, setActiveStudent] = useState<Student>(INITIAL_STUDENTS[0]);
-  const [opportunities, setOpportunities] = useState<Opportunity[]>(INITIAL_OPPORTUNITIES);
+  const [activeStudent, setActiveStudent] = useState<Student | null>(null);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
-  const [savedCount, setSavedCount] = useState(2);
+  const [currentTime, setCurrentTime] = useState<number | null>(null);
+  const [savedCount, setSavedCount] = useState(0);
+  const [savedOpportunities, setSavedOpportunities] = useState<SavedOpportunity[]>([]);
 
   // Fetch live opportunities from API
   useEffect(() => {
     async function loadData() {
       try {
-        const res = await fetch("/api/opportunities");
-        const json = await res.json();
-        if (json.success && json.data) {
-          setOpportunities(json.data);
+        const [opportunitiesResponse, profileResponse, studentsResponse, savedResponse] = await Promise.all([
+          fetch("/api/opportunities"),
+          fetch("/api/students"),
+          fetch("/api/students?directory=1"),
+          fetch("/api/saved-opportunities"),
+        ]);
+        const [opportunitiesResult, profileResult, studentsResult, savedResult] = await Promise.all([
+          opportunitiesResponse.json(),
+          profileResponse.json(),
+          studentsResponse.json(),
+          savedResponse.json(),
+        ]);
+
+        if (opportunitiesResponse.ok && opportunitiesResult.success && opportunitiesResult.data) {
+          setOpportunities(opportunitiesResult.data);
+        }
+        if (profileResponse.ok && profileResult.success && profileResult.data) setActiveStudent(profileResult.data);
+        if (studentsResponse.ok && studentsResult.success && Array.isArray(studentsResult.data)) setStudents(studentsResult.data);
+        if (savedResponse.ok && savedResult.success) {
+          setSavedCount(savedResult.count ?? 0);
+          setSavedOpportunities(savedResult.data ?? []);
         }
       } catch {
-        // use fallback initial
+        setOpportunities([]);
       }
     }
     loadData();
   }, []);
 
+  useEffect(() => {
+    const updateCurrentTime = () => setCurrentTime(Date.now());
+    updateCurrentTime();
+    const intervalId = window.setInterval(updateCurrentTime, 60_000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
   const urgentOpportunities = opportunities.filter((opp) => {
-    const remaining = new Date(opp.deadline).getTime() - Date.now();
+    if (currentTime === null) return false;
+    const remaining = new Date(opp.deadline).getTime() - currentTime;
     return remaining > 0 && remaining < 6 * 24 * 60 * 60 * 1000;
   });
 
   return (
     <div className="flex flex-col min-h-screen">
-      <Navbar onOpenDemo={() => setDemoModalOpen(true)} />
+      <Navbar />
 
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
         {/* Top Student Welcome Banner & Persona Switcher */}
@@ -65,9 +88,11 @@ export default function DashboardPage() {
           <div className="flex items-center gap-4">
             <div className="relative">
               <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-cyan-400 p-[2px] shadow-lg shadow-blue-500/20">
-                <img
-                  src={activeStudent.avatar_url || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"}
-                  alt={activeStudent.display_name}
+                <Image
+                  src={activeStudent?.avatar_url || "/avatar-placeholder.svg"}
+                  alt={activeStudent?.display_name || "Student profile"}
+                  width={56}
+                  height={56}
                   className="w-full h-full object-cover rounded-[14px]"
                 />
               </div>
@@ -75,41 +100,22 @@ export default function DashboardPage() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold text-white">Welcome back, {activeStudent.display_name}</h1>
+                <h1 className="text-xl font-bold text-white">Welcome back, {activeStudent?.display_name || "Student"}</h1>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/20 text-cyan-300 border border-blue-500/30">
-                  {activeStudent.experience_level}
+                  {activeStudent?.experience_level || "Complete your profile"}
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                {activeStudent.college} • <span className="text-slate-300">{activeStudent.course}</span>
+                {activeStudent?.college || "Add your college"} • <span className="text-slate-300">{activeStudent?.course || "Add your course"}</span>
               </p>
             </div>
           </div>
 
-          {/* Quick Persona Switcher for Hackathon Judges */}
-          <div className="flex items-center gap-2 bg-slate-900/90 p-1.5 rounded-xl border border-slate-800">
-            <span className="text-[11px] text-slate-400 px-2 font-medium flex items-center gap-1">
-              <UserCheck className="w-3.5 h-3.5 text-cyan-400" /> Switch Demo Profile:
-            </span>
-            <div className="flex gap-1">
-              {INITIAL_STUDENTS.slice(0, 3).map((student) => (
-                <button
-                  key={student.id}
-                  onClick={() => setActiveStudent(student)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-                    activeStudent.id === student.id
-                      ? "bg-blue-600 text-white shadow-sm"
-                      : "text-slate-400 hover:text-white hover:bg-slate-800"
-                  }`}
-                >
-                  {student.display_name.split(" ")[0]}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* METRIC CARDS ROW */}
+        <DeadlineReminderPanel opportunities={opportunities} saved={savedOpportunities} />
+
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <div className="p-4 rounded-xl bg-slate-900/50 border border-slate-800 hover:border-blue-500/30 transition-colors">
             <div className="flex items-center justify-between text-slate-400 mb-2">
@@ -145,7 +151,7 @@ export default function DashboardPage() {
               <span className="text-xs font-medium">Compatible Teammates</span>
               <Users className="w-4 h-4 text-cyan-400" />
             </div>
-            <div className="text-2xl font-bold text-cyan-400">{INITIAL_STUDENTS.length - 1}</div>
+            <div className="text-2xl font-bold text-cyan-400">{Math.max(0, students.length - 1)}</div>
             <div className="text-[11px] text-slate-400 mt-1">With &gt; 70% skill complementarity</div>
           </div>
         </div>
@@ -284,15 +290,17 @@ export default function DashboardPage() {
             </div>
 
             <div className="space-y-3">
-              {INITIAL_STUDENTS.filter((s) => s.id !== activeStudent.id)
+              {students.filter((s) => s.id !== activeStudent?.id)
                 .slice(0, 3)
                 .map((peer) => (
                   <div key={peer.id} className="p-3.5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
-                        <img
+                        <Image
                           src={peer.avatar_url || "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150"}
                           alt={peer.display_name}
+                          width={32}
+                          height={32}
                           className="w-8 h-8 rounded-full object-cover border border-slate-700"
                         />
                         <div>
@@ -301,7 +309,7 @@ export default function DashboardPage() {
                         </div>
                       </div>
                       <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                        88% Fit
+                        Student profile
                       </span>
                     </div>
 
@@ -327,7 +335,6 @@ export default function DashboardPage() {
       </main>
 
       <Footer />
-      <DemoModal isOpen={demoModalOpen} onClose={() => setDemoModalOpen(false)} />
       <GemmaRelevanceModal
         opportunity={selectedOpportunity}
         isOpen={Boolean(selectedOpportunity)}

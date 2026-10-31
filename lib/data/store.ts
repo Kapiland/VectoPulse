@@ -1,230 +1,103 @@
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import "server-only";
+
+import { createClient } from "@/lib/supabase/server";
 import { Opportunity, Student, SavedOpportunity, ApplicationStatus } from "@/types";
-import { INITIAL_OPPORTUNITIES, INITIAL_STUDENTS } from "./mock-data";
 
-// In-memory persistent cache for zero-config mode / local demo / fallback
-let memoryOpportunities: Opportunity[] = [...INITIAL_OPPORTUNITIES];
-let memoryStudents: Student[] = [...INITIAL_STUDENTS];
-let memorySaved: SavedOpportunity[] = [
-  {
-    id: "saved-1",
-    student_id: INITIAL_STUDENTS[0].id,
-    opportunity_id: INITIAL_OPPORTUNITIES[0].id,
-    application_status: "Interested",
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: "saved-2",
-    student_id: INITIAL_STUDENTS[0].id,
-    opportunity_id: INITIAL_OPPORTUNITIES[2].id,
-    application_status: "Applied",
-    created_at: new Date().toISOString(),
-  },
-];
-
-function getSupabaseClient(): SupabaseClient | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key || url.includes("your-project-id") || key.includes("your_supabase_anon_key")) {
-    return null;
-  }
-  try {
-    return createClient(url, key);
-  } catch {
-    return null;
-  }
+async function authenticatedClient() {
+  const supabase = await createClient();
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) throw new Error("Authentication required");
+  return { supabase, user };
 }
 
-export async function getOpportunities(): Promise<{ data: Opportunity[]; isDatabase: boolean }> {
-  const supabase = getSupabaseClient();
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from("opportunities")
-        .select("*")
-        .order("deadline", { ascending: true });
-      if (!error && data && data.length > 0) {
-        return { data: data as Opportunity[], isDatabase: true };
-      }
-    } catch (e) {
-      console.warn("Supabase query error, falling back to local memory store:", e);
-    }
-  }
-  return { data: memoryOpportunities, isDatabase: false };
+export async function getOpportunities(): Promise<{ data: Opportunity[]; isDatabase: true }> {
+  const { supabase } = await authenticatedClient();
+  const { data, error } = await supabase
+    .from("opportunities")
+    .select("*")
+    .gte("deadline", new Date().toISOString())
+    .order("deadline");
+  if (error) throw new Error(`Could not load opportunities: ${error.message}`);
+  return { data: (data ?? []) as Opportunity[], isDatabase: true };
 }
 
-export async function getOpportunityById(id: string): Promise<Opportunity | null> {
-  const supabase = getSupabaseClient();
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from("opportunities")
-        .select("*")
-        .eq("id", id)
-        .single();
-      if (!error && data) return data as Opportunity;
-    } catch {
-      // fallback
-    }
-  }
-  return memoryOpportunities.find((o) => o.id === id) || null;
-}
-
-export async function createOpportunity(opp: Omit<Opportunity, "id" | "created_at">): Promise<Opportunity> {
-  const newId = "opp-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7);
-  const newRecord: Opportunity = {
+export async function createOpportunity(
+  opp: Omit<Opportunity, "id" | "created_at">
+): Promise<{ data: Opportunity; isDatabase: true }> {
+  const { supabase, user } = await authenticatedClient();
+  const databaseRecord = {
     ...opp,
-    id: newId,
-    created_at: new Date().toISOString(),
+    created_by: user.id,
+    verification_status: "User submitted",
+    // A notice that only lists a calendar date means applications close at
+    // the end of that date in India, not at midnight UTC at its start.
+    deadline: /^\d{4}-\d{2}-\d{2}$/.test(opp.deadline)
+      ? new Date(`${opp.deadline}T23:59:59+05:30`).toISOString()
+      : new Date(opp.deadline).toISOString(),
+    event_date: opp.event_date && !Number.isNaN(Date.parse(opp.event_date))
+      ? new Date(opp.event_date).toISOString()
+      : null,
   };
-
-  const supabase = getSupabaseClient();
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from("opportunities")
-        .insert([newRecord])
-        .select()
-        .single();
-      if (!error && data) {
-        memoryOpportunities.unshift(data as Opportunity);
-        return data as Opportunity;
-      }
-    } catch (e) {
-      console.warn("Supabase insert error, saving to memory store:", e);
-    }
-  }
-
-  // Prepend to memory store so it immediately shows up first
-  memoryOpportunities.unshift(newRecord);
-  return newRecord;
+  const { data, error } = await supabase.from("opportunities").insert(databaseRecord).select().single();
+  if (error) throw new Error(`Could not save opportunity: ${error.message}`);
+  return { data: data as Opportunity, isDatabase: true };
 }
 
-export async function getStudents(): Promise<{ data: Student[]; isDatabase: boolean }> {
-  const supabase = getSupabaseClient();
-  if (supabase) {
-    try {
-      const { data, error } = await supabase.from("students").select("*");
-      if (!error && data && data.length > 0) {
-        return { data: data as Student[], isDatabase: true };
-      }
-    } catch {
-      // fallback
-    }
-  }
-  return { data: memoryStudents, isDatabase: false };
+export async function getStudents(): Promise<{ data: Student[]; isDatabase: true }> {
+  const { supabase } = await authenticatedClient();
+  const { data, error } = await supabase.from("students").select("*").order("display_name");
+  if (error) throw new Error(`Could not load student profiles: ${error.message}`);
+  return { data: (data ?? []) as Student[], isDatabase: true };
 }
 
 export async function getStudentById(id: string): Promise<Student | null> {
-  const supabase = getSupabaseClient();
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from("students")
-        .select("*")
-        .eq("id", id)
-        .single();
-      if (!error && data) return data as Student;
-    } catch {
-      // fallback
-    }
-  }
-  return memoryStudents.find((s) => s.id === id) || null;
+  const { supabase, user } = await authenticatedClient();
+  if (id !== user.id) return null;
+  const { data, error } = await supabase.from("students").select("*").eq("id", user.id).maybeSingle();
+  if (error) throw new Error(`Could not load student profile: ${error.message}`);
+  return data as Student | null;
 }
 
-export async function updateStudent(id: string, updates: Partial<Student>): Promise<Student | null> {
-  const supabase = getSupabaseClient();
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from("students")
-        .update(updates)
-        .eq("id", id)
-        .select()
-        .single();
-      if (!error && data) {
-        const idx = memoryStudents.findIndex((s) => s.id === id);
-        if (idx !== -1) memoryStudents[idx] = data as Student;
-        return data as Student;
-      }
-    } catch {
-      // fallback
-    }
-  }
-
-  const idx = memoryStudents.findIndex((s) => s.id === id);
-  if (idx !== -1) {
-    memoryStudents[idx] = { ...memoryStudents[idx], ...updates };
-    return memoryStudents[idx];
-  }
-  return null;
+export async function updateStudent(updates: Partial<Student>): Promise<{ data: Student | null; isDatabase: true }> {
+  const { supabase, user } = await authenticatedClient();
+  const safeUpdates = { ...updates };
+  delete safeUpdates.id;
+  delete safeUpdates.created_at;
+  delete safeUpdates.avatar_url;
+  const { data, error } = await supabase.from("students").update(safeUpdates).eq("id", user.id).select().maybeSingle();
+  if (error) throw new Error(`Could not save student profile: ${error.message}`);
+  return { data: data as Student | null, isDatabase: true };
 }
 
-export async function getSavedOpportunities(studentId: string): Promise<SavedOpportunity[]> {
-  const supabase = getSupabaseClient();
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from("saved_opportunities")
-        .select("*")
-        .eq("student_id", studentId);
-      if (!error && data) return data as SavedOpportunity[];
-    } catch {
-      // fallback
-    }
-  }
-  return memorySaved.filter((s) => s.student_id === studentId);
+export async function getSavedOpportunities(): Promise<SavedOpportunity[]> {
+  const { supabase, user } = await authenticatedClient();
+  const { data, error } = await supabase.from("saved_opportunities").select("*").eq("student_id", user.id);
+  if (error) throw new Error(`Could not load saved opportunities: ${error.message}`);
+  return (data ?? []) as SavedOpportunity[];
 }
 
 export async function updateOpportunityStatus(
-  studentId: string,
   opportunityId: string,
   status: ApplicationStatus
-): Promise<SavedOpportunity> {
-  const existingIndex = memorySaved.findIndex(
-    (s) => s.student_id === studentId && s.opportunity_id === opportunityId
+): Promise<{ data: SavedOpportunity; isDatabase: true }> {
+  const { supabase, user } = await authenticatedClient();
+
+  // Existing auth accounts may predate the signup trigger or may have been
+  // created while the trigger was unavailable. Ensure the FK target exists
+  // before saving an opportunity.
+  const displayName = String(user.user_metadata?.display_name ?? "").trim()
+    || user.email?.split("@")[0]
+    || "Student";
+  const { error: profileError } = await supabase.from("students").upsert(
+    { id: user.id, display_name: displayName },
+    { onConflict: "id", ignoreDuplicates: true }
   );
+  if (profileError) throw new Error(`Could not prepare student profile: ${profileError.message}`);
 
-  const supabase = getSupabaseClient();
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from("saved_opportunities")
-        .upsert(
-          {
-            student_id: studentId,
-            opportunity_id: opportunityId,
-            application_status: status,
-          },
-          { onConflict: "student_id,opportunity_id" }
-        )
-        .select()
-        .single();
-      if (!error && data) {
-        if (existingIndex !== -1) {
-          memorySaved[existingIndex] = data as SavedOpportunity;
-        } else {
-          memorySaved.push(data as SavedOpportunity);
-        }
-        return data as SavedOpportunity;
-      }
-    } catch {
-      // fallback
-    }
-  }
-
-  if (existingIndex !== -1) {
-    memorySaved[existingIndex].application_status = status;
-    return memorySaved[existingIndex];
-  }
-
-  const newSaved: SavedOpportunity = {
-    id: "saved-" + Date.now(),
-    student_id: studentId,
-    opportunity_id: opportunityId,
-    application_status: status,
-    created_at: new Date().toISOString(),
-  };
-  memorySaved.push(newSaved);
-  return newSaved;
+  const { data, error } = await supabase.from("saved_opportunities").upsert(
+    { student_id: user.id, opportunity_id: opportunityId, application_status: status },
+    { onConflict: "student_id,opportunity_id" }
+  ).select().single();
+  if (error) throw new Error(`Could not update saved opportunity: ${error.message}`);
+  return { data: data as SavedOpportunity, isDatabase: true };
 }

@@ -95,13 +95,27 @@ export async function matchTeammates(params: {
   const results: TeamMatchCandidate[] = [];
 
   for (const item of scoredCandidates) {
-    const explanation = await generateMatchExplanationWithGemma({
-      requesterNeed: requirement,
-      candidate: item.student,
-      compatibilityScore: item.compatibility_score,
-      matchingSkills: item.matching_skills,
-      missingSkills: item.missing_skills,
-    });
+    let explanation: TeamMatchCandidate["explanation"];
+    try {
+      explanation = await generateMatchExplanationWithGemma({
+        requesterNeed: requirement,
+        candidate: item.student,
+        compatibilityScore: item.compatibility_score,
+        matchingSkills: item.matching_skills,
+        missingSkills: item.missing_skills,
+      });
+    } catch {
+      const name = item.student.display_name;
+      const strengths = item.matching_skills.length
+        ? item.matching_skills
+        : item.student.skills.slice(0, 3);
+      explanation = {
+        english: `${name} is ranked ${item.compatibility_score}% for this project based on their profile. Their ${strengths.join(", ") || "listed skills"} can support the team's requirements.`,
+        hindi_simple: `${name} ke profile ke hisaab se inki skills project ki requirements se match karti hain.`,
+        key_strengths: strengths,
+        suggested_synergy: `Ask ${name} to own the ${item.complementary_roles[0] || "matching skill"} part of the project.`,
+      };
+    }
 
     results.push({
       student: item.student,

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
@@ -24,65 +24,95 @@ import {
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import DemoModal from "@/components/DemoModal";
 import { Student, TeamMatchCandidate } from "@/types";
-import { INITIAL_STUDENTS } from "@/lib/data/mock-data";
+
+async function requestTeamMatches(query: string): Promise<TeamMatchCandidate[]> {
+  const res = await fetch("/api/team-match", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query }),
+  });
+
+  const json = await res.json();
+  if (!res.ok || !json.success) throw new Error(json.error || "Could not find teammates.");
+  return json.data ?? [];
+}
 
 function TeamMatcherContent() {
   const searchParams = useSearchParams();
-  const [demoModalOpen, setDemoModalOpen] = useState(false);
-  const [activeRequester, setActiveRequester] = useState<Student>(INITIAL_STUDENTS[0]);
-  const [requirementQuery, setRequirementQuery] = useState(
-    "I need a Next.js frontend developer and UI/UX designer for an AI hackathon project."
-  );
+  const initialQuery = searchParams.get("query");
+
+  return <TeamMatcherForm key={initialQuery} initialQuery={initialQuery} />;
+}
+
+function TeamMatcherForm({ initialQuery }: { initialQuery: string | null }) {
+  const [activeRequester, setActiveRequester] = useState<Student | null>(null);
+  const [requirementQuery, setRequirementQuery] = useState(initialQuery || "");
   const [isMatching, setIsMatching] = useState(false);
   const [matchedCandidates, setMatchedCandidates] = useState<TeamMatchCandidate[]>([]);
-  const [invitedStudentIds, setInvitedStudentIds] = useState<Record<string, boolean>>({});
+  const [errorMessage, setErrorMessage] = useState("");
+  const [sharedStudentIds, setSharedStudentIds] = useState<Record<string, boolean>>({});
   const [selectedLanguage, setSelectedLanguage] = useState<"en" | "hi">("en");
 
-  // Read URL query parameter if present
-  useEffect(() => {
-    const q = searchParams.get("query");
-    if (q) {
-      setRequirementQuery(q);
-    }
-  }, [searchParams]);
-
-  // Execute matching on load and when triggered
   const handleFindMatches = async (queryText = requirementQuery) => {
     if (!queryText.trim()) return;
 
     setIsMatching(true);
     try {
-      const res = await fetch("/api/team-match", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: queryText,
-          requester_id: activeRequester.id,
-        }),
-      });
-
-      const json = await res.json();
-      if (json.success && json.data) {
-        setMatchedCandidates(json.data);
-      }
-    } catch {
-      // fallback
+      setErrorMessage("");
+      const candidates = await requestTeamMatches(queryText);
+      setMatchedCandidates(candidates);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Could not find teammates.");
     } finally {
       setIsMatching(false);
     }
   };
 
   useEffect(() => {
-    handleFindMatches();
-  }, [activeRequester]);
+    let isCurrent = true;
 
-  const handleSendInvite = (studentId: string) => {
-    setInvitedStudentIds((prev) => ({
-      ...prev,
-      [studentId]: true,
-    }));
+    async function loadProfileAndMatches() {
+      try {
+        const response = await fetch("/api/students");
+        const result = await response.json();
+        if (!response.ok || !result.success || !result.data) throw new Error(result.error || "Complete your profile first.");
+        if (isCurrent) setActiveRequester(result.data);
+        if (initialQuery) {
+          const matches = await requestTeamMatches(initialQuery);
+          if (isCurrent) setMatchedCandidates(matches);
+        }
+      } catch (error) {
+        if (isCurrent) setErrorMessage(error instanceof Error ? error.message : "Could not load your profile.");
+      }
+    }
+
+    void loadProfileAndMatches();
+    return () => {
+      isCurrent = false;
+    };
+  }, [initialQuery]);
+
+  const handleShareInvite = async (studentId: string, studentName: string) => {
+    const inviteUrl = new URL("/team-matcher", window.location.origin);
+    inviteUrl.searchParams.set("query", requirementQuery);
+    const shareData = {
+      title: `Join ${activeRequester?.display_name || "me"} on CampusSignal`,
+      text: `${studentName}, let's collaborate on this project: ${requirementQuery}`,
+      url: inviteUrl.toString(),
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(shareData.url);
+      }
+      setSharedStudentIds((prev) => ({ ...prev, [studentId]: true }));
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setErrorMessage("Could not share the project invite. Check browser sharing permissions and try again.");
+    }
   };
 
   const PRESET_QUERIES = [
@@ -106,9 +136,10 @@ function TeamMatcherContent() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      <Navbar onOpenDemo={() => setDemoModalOpen(true)} />
+      <Navbar />
 
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+        {errorMessage && <div role="alert" className="mb-5 rounded-xl border border-red-500/30 bg-red-950/30 p-3 text-sm text-red-300">{errorMessage} <Link href="/profile" className="font-semibold underline">Open your profile</Link></div>}
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-2">
@@ -133,42 +164,24 @@ function TeamMatcherContent() {
         <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 mb-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <img
-              src={activeRequester.avatar_url || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"}
-              alt={activeRequester.display_name}
+              src={activeRequester?.avatar_url || "/avatar-placeholder.svg"}
+              alt={activeRequester?.display_name || "Student profile"}
               className="w-11 h-11 rounded-xl object-cover border border-blue-500/30"
             />
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400 font-medium">Active Requester:</span>
-                <span className="text-sm font-bold text-white">{activeRequester.display_name}</span>
+                <span className="text-xs text-slate-400 font-medium">Your profile:</span>
+                <span className="text-sm font-bold text-white">{activeRequester?.display_name || "Loading profileâ€¦"}</span>
                 <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-blue-500/20 text-cyan-300">
-                  {activeRequester.preferred_roles[0]}
+                  {activeRequester?.preferred_roles?.[0] || "Add a preferred role"}
                 </span>
               </div>
               <div className="text-[11px] text-slate-400">
-                Skills: {activeRequester.skills.slice(0, 3).join(", ")} • {activeRequester.college}
+                Skills: {(activeRequester?.skills ?? []).slice(0, 3).join(", ")} â€¢ {activeRequester?.college || "Add your college"}
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-400">Switch Persona:</span>
-            <div className="flex gap-1">
-              {INITIAL_STUDENTS.slice(0, 3).map((student) => (
-                <button
-                  key={student.id}
-                  onClick={() => setActiveRequester(student)}
-                  className={`px-2 py-1 rounded-lg text-xs font-medium transition-all ${
-                    activeRequester.id === student.id
-                      ? "bg-blue-600 text-white shadow-sm"
-                      : "bg-slate-800 text-slate-400 hover:text-white"
-                  }`}
-                >
-                  {student.display_name.split(" ")[0]}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* REQUIREMENT SEARCH & INPUT CARD */}
@@ -229,13 +242,15 @@ function TeamMatcherContent() {
                     selectedLanguage === "hi" ? "bg-cyan-600 text-white" : "text-slate-400 hover:text-white"
                   }`}
                 >
-                  हिन्दी / Hinglish
+                  à¤¹à¤¿à¤¨à¥à¤¦à¥€ / Hinglish
                 </button>
               </div>
             </div>
 
             <button
-              onClick={() => handleFindMatches()}
+              onClick={() => {
+                handleFindMatches();
+              }}
               disabled={isMatching || !requirementQuery.trim()}
               className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-cyan-500/20 transition-all cursor-pointer"
             >
@@ -271,7 +286,7 @@ function TeamMatcherContent() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {matchedCandidates.map((candidate) => {
               const student = candidate.student;
-              const isInvited = invitedStudentIds[student.id];
+              const isShared = sharedStudentIds[student.id];
 
               return (
                 <div
@@ -325,7 +340,7 @@ function TeamMatcherContent() {
                     <div className="space-y-2 mb-4 p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs">
                       <div>
                         <span className="text-[10px] font-semibold text-emerald-400 block mb-1">
-                          ✓ Direct Matching Skills:
+                          âœ“ Direct Matching Skills:
                         </span>
                         <div className="flex flex-wrap gap-1">
                           {candidate.matching_skills.map((s) => (
@@ -388,23 +403,22 @@ function TeamMatcherContent() {
                     </span>
 
                     <button
-                      onClick={() => handleSendInvite(student.id)}
-                      disabled={isInvited}
+                      onClick={() => void handleShareInvite(student.id, student.display_name)}
                       className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
-                        isInvited
+                        isShared
                           ? "bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 cursor-default"
                           : "bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-500/20 cursor-pointer"
                       }`}
                     >
-                      {isInvited ? (
+                      {isShared ? (
                         <>
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Collaboration Invite Sent!</span>
+                          <span>Invite link shared</span>
                         </>
                       ) : (
                         <>
                           <UserPlus className="w-3.5 h-3.5" />
-                          <span>Send Hackathon Invite</span>
+                          <span>Share project invite</span>
                         </>
                       )}
                     </button>
@@ -413,11 +427,22 @@ function TeamMatcherContent() {
               );
             })}
           </div>
+          {requirementQuery.trim() && !isMatching && matchedCandidates.length === 0 && !errorMessage && (
+            <div className="rounded-2xl border border-cyan-500/20 bg-slate-900/60 p-6 text-center">
+              <Users className="mx-auto mb-3 h-7 w-7 text-cyan-300" />
+              <h3 className="text-sm font-semibold text-white">No teammate profiles are discoverable yet</h3>
+              <p className="mx-auto mt-2 max-w-xl text-xs leading-relaxed text-slate-400">
+                Recommendations use real student profiles. Ask teammates to create an account and enable profile discovery, or enable it in your own profile so other students can find you.
+              </p>
+              <Link href="/profile" className="mt-4 inline-flex rounded-lg bg-cyan-600 px-4 py-2 text-xs font-semibold text-white hover:bg-cyan-500">
+                Manage profile discovery
+              </Link>
+            </div>
+          )}
         </div>
       </main>
 
       <Footer />
-      <DemoModal isOpen={demoModalOpen} onClose={() => setDemoModalOpen(false)} />
     </div>
   );
 }
@@ -429,3 +454,4 @@ export default function TeamMatcherPage() {
     </Suspense>
   );
 }
+

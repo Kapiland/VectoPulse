@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOpportunities, createOpportunity, updateOpportunityStatus } from "@/lib/data/store";
 import { OpportunityCreateSchema } from "@/lib/schemas";
+import { requireApiUser, unauthorizedResponse } from "@/lib/supabase/api";
 
 export async function GET(req: NextRequest) {
+  const auth = await requireApiUser();
+  if (!auth.user) return unauthorizedResponse();
   try {
     const { searchParams } = new URL(req.url);
     const category = searchParams.get("category");
@@ -51,24 +54,26 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireApiUser();
+  if (!auth.user) return unauthorizedResponse();
   try {
     const body = await req.json();
 
     // Check if this is a status update action (bookmark / apply)
     if (body.action === "update_status") {
-      const { student_id, opportunity_id, status } = body;
-      if (!student_id || !opportunity_id || !status) {
+      const { opportunity_id, status } = body;
+      if (!opportunity_id || !["Interested", "Applied", "Completed"].includes(status)) {
         return NextResponse.json({ error: "Missing status update parameters" }, { status: 400 });
       }
-      const saved = await updateOpportunityStatus(student_id, opportunity_id, status);
-      return NextResponse.json({ success: true, data: saved });
+      const saved = await updateOpportunityStatus(opportunity_id, status);
+      return NextResponse.json({ success: true, ...saved });
     }
 
     // Otherwise, it's creating a new opportunity
     const parsed = OpportunityCreateSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Validation failed", details: parsed.error.issues },
+        { error: parsed.error.issues[0]?.message || "Validation failed", details: parsed.error.issues },
         { status: 400 }
       );
     }
@@ -89,11 +94,14 @@ export async function POST(req: NextRequest) {
     }
 
     const created = await createOpportunity(parsed.data);
+    // The person who submits a notice is automatically tracking it, so its
+    // deadline reminder appears without an extra save/bookmark step.
+    await updateOpportunityStatus(created.data.id, "Interested");
 
     return NextResponse.json({
       success: true,
-      data: created,
-      message: "Opportunity successfully published to Smart Opportunity Radar!",
+      ...created,
+      message: "Opportunity saved to the Smart Opportunity Radar.",
     }, { status: 201 });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Failed to create opportunity";

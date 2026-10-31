@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { 
   Sparkles, 
   User, 
@@ -17,20 +17,42 @@ import {
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import DemoModal from "@/components/DemoModal";
-import { INITIAL_STUDENTS } from "@/lib/data/mock-data";
 import { Student } from "@/types";
 
 export default function ProfilePage() {
-  const [demoModalOpen, setDemoModalOpen] = useState(false);
-  const [activeProfile, setActiveProfile] = useState<Student>(INITIAL_STUDENTS[0]);
+  const [activeProfile, setActiveProfile] = useState<Student | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [newSkill, setNewSkill] = useState("");
   const [newInterest, setNewInterest] = useState("");
 
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadProfiles() {
+      try {
+        const response = await fetch("/api/students");
+        const result = await response.json();
+        if (!response.ok || !result.success || !result.data) {
+          throw new Error(result.error || "Could not load student profiles.");
+        }
+        if (isCurrent) setActiveProfile(result.data);
+      } catch (error) {
+        if (isCurrent) {
+          setErrorMessage(error instanceof Error ? error.message : "Could not load student profiles.");
+        }
+      }
+    }
+
+    void loadProfiles();
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
   const handleAddSkill = () => {
-    if (!newSkill.trim() || activeProfile.skills.includes(newSkill.trim())) return;
+    if (!activeProfile || !newSkill.trim() || activeProfile.skills.includes(newSkill.trim())) return;
     setActiveProfile({
       ...activeProfile,
       skills: [...activeProfile.skills, newSkill.trim()],
@@ -39,6 +61,7 @@ export default function ProfilePage() {
   };
 
   const handleRemoveSkill = (skillToRemove: string) => {
+    if (!activeProfile) return;
     setActiveProfile({
       ...activeProfile,
       skills: activeProfile.skills.filter((s) => s !== skillToRemove),
@@ -46,7 +69,7 @@ export default function ProfilePage() {
   };
 
   const handleAddInterest = () => {
-    if (!newInterest.trim() || activeProfile.interests.includes(newInterest.trim())) return;
+    if (!activeProfile || !newInterest.trim() || activeProfile.interests.includes(newInterest.trim())) return;
     setActiveProfile({
       ...activeProfile,
       interests: [...activeProfile.interests, newInterest.trim()],
@@ -55,6 +78,7 @@ export default function ProfilePage() {
   };
 
   const handleRemoveInterest = (interestToRemove: string) => {
+    if (!activeProfile) return;
     setActiveProfile({
       ...activeProfile,
       interests: activeProfile.interests.filter((i) => i !== interestToRemove),
@@ -62,25 +86,36 @@ export default function ProfilePage() {
   };
 
   const handleSaveProfile = async () => {
+    if (!activeProfile) return;
     setIsSaving(true);
+    setErrorMessage(null);
     try {
-      await fetch("/api/students", {
+      const response = await fetch("/api/students", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(activeProfile),
       });
+      const result = await response.json();
+      if (!response.ok || !result.success || !result.data) {
+        throw new Error(result.error || "Could not save your profile.");
+      }
+
+      setActiveProfile(result.data);
       setSuccessMessage(true);
       setTimeout(() => setSuccessMessage(false), 3000);
-    } catch {
-      // fallback
+    } catch (error) {
+      setSuccessMessage(false);
+      setErrorMessage(error instanceof Error ? error.message : "Could not save your profile.");
     } finally {
       setIsSaving(false);
     }
   };
 
+  if (!activeProfile) return <><Navbar /><main className="mx-auto w-full max-w-3xl flex-1 px-4 py-16 text-center text-slate-300">{errorMessage || "Loading your profileâ€¦"}</main><Footer /></>;
+
   return (
     <div className="flex flex-col min-h-screen">
-      <Navbar onOpenDemo={() => setDemoModalOpen(true)} />
+      <Navbar />
 
       <main className="flex-1 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
         {/* Header */}
@@ -90,7 +125,7 @@ export default function ProfilePage() {
               <span className="text-xs font-mono px-2 py-0.5 rounded bg-blue-500/20 text-cyan-300 border border-blue-500/30">
                 STUDENT COLLABORATION IDENTITY
               </span>
-              <span className="text-xs text-slate-400">Zero PII • Skills-First</span>
+              <span className="text-xs text-slate-400">Zero PII â€¢ Skills-First</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white">Student Profile & Preferences</h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-1">
@@ -98,32 +133,20 @@ export default function ProfilePage() {
             </p>
           </div>
 
-          {/* Profile Switcher */}
-          <div className="flex items-center gap-2 bg-slate-900 p-1.5 rounded-xl border border-slate-800">
-            <span className="text-[11px] text-slate-400 px-2 font-medium">Switch Persona:</span>
-            <div className="flex gap-1">
-              {INITIAL_STUDENTS.slice(0, 3).map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => setActiveProfile(s)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-                    activeProfile.id === s.id
-                      ? "bg-blue-600 text-white shadow-sm"
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  {s.display_name.split(" ")[0]}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* Success toast banner */}
         {successMessage && (
           <div className="mb-6 p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-200 text-xs flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>Profile successfully updated! Teammate match index refreshed.</span>
+            <span>Profile saved to your account.</span>
+          </div>
+        )}
+
+        {errorMessage && (
+          <div role="alert" className="mb-6 p-3.5 rounded-xl bg-red-950/40 border border-red-500/30 text-red-200 text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+            <span>{errorMessage}</span>
           </div>
         )}
 
@@ -255,13 +278,22 @@ export default function ProfilePage() {
             />
           </div>
 
+          <label className="flex items-start gap-3 rounded-xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-200">
+            <input
+              type="checkbox"
+              checked={Boolean(activeProfile.is_discoverable)}
+              onChange={(e) => setActiveProfile({ ...activeProfile, is_discoverable: e.target.checked })}
+              className="mt-0.5 accent-cyan-500"
+            />
+            <span><strong className="block">Show my profile in Team Matcher</strong><span className="mt-1 block text-xs text-slate-400">Only signed-in students can see your name, college, skills, and preferred roles. Email and password stay private.</span></span>
+          </label>
+
           {/* Privacy & Security Callout */}
           <div className="p-3.5 rounded-xl bg-slate-950/80 border border-blue-500/20 text-xs text-slate-400 flex items-start gap-2.5">
             <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
             <div>
               <span className="text-slate-300 font-semibold block mb-0.5">Privacy First Guarantee</span>
-              CampusSignal AI does not collect Aadhaar numbers, bank details, contact numbers, or passwords. 
-              Only your public skill endorsements and college affiliation are matched.
+              Your email address and password are never shown in student listings. Profile visibility is off until you enable it above.
             </div>
           </div>
 
@@ -280,7 +312,7 @@ export default function ProfilePage() {
       </main>
 
       <Footer />
-      <DemoModal isOpen={demoModalOpen} onClose={() => setDemoModalOpen(false)} />
     </div>
   );
 }
+

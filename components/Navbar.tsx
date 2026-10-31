@@ -2,27 +2,44 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { 
   Sparkles, 
   Compass, 
   FileText, 
   Users, 
   User, 
-  Play, 
   Menu, 
   X,
   Radio,
-  Cpu
 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
-interface NavbarProps {
-  onOpenDemo?: () => void;
-}
-
-export default function Navbar({ onOpenDemo }: NavbarProps) {
+export default function Navbar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [signedIn, setSignedIn] = useState(false);
+
+  useEffect(() => {
+    const supabase = createClient();
+    void supabase.auth.getUser().then(({ data }) => setSignedIn(Boolean(data.user)));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSignedIn(Boolean(session?.user));
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function handleAuthAction() {
+    if (signedIn) {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+      router.push("/");
+    } else {
+      router.push("/auth");
+    }
+  }
 
   const navLinks = [
     { href: "/dashboard", label: "Dashboard", icon: Compass },
@@ -82,26 +99,10 @@ export default function Navbar({ onOpenDemo }: NavbarProps) {
           })}
         </nav>
 
-        {/* Right Actions */}
         <div className="flex items-center gap-2.5">
-          {/* Active AI indicator badge */}
-          <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/80 border border-emerald-500/30 text-[11px] text-emerald-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <Cpu className="w-3 h-3 text-emerald-400" />
-            <span>Gemini + Gemma Active</span>
-          </div>
-
-          {/* 60s Demo Button */}
-          {onOpenDemo && (
-            <button
-              onClick={onOpenDemo}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white text-xs font-semibold shadow-md shadow-blue-500/25 hover:shadow-blue-500/40 transition-all cursor-pointer"
-            >
-              <Play className="w-3 h-3 fill-white" />
-              <span>Try Live Demo</span>
-              <span className="hidden sm:inline text-[10px] opacity-80">(60s)</span>
-            </button>
-          )}
+          <button onClick={handleAuthAction} className="hidden md:inline-flex rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-cyan-400 hover:text-cyan-200">
+            {signedIn ? "Sign out" : "Sign in"}
+          </button>
 
           {/* Mobile hamburger */}
           <button
@@ -143,6 +144,9 @@ export default function Navbar({ onOpenDemo }: NavbarProps) {
               </Link>
             );
           })}
+          <button onClick={handleAuthAction} className="w-full rounded-lg px-3 py-2 text-left text-sm text-cyan-300 hover:bg-slate-800/60">
+            {signedIn ? "Sign out" : "Sign in"}
+          </button>
         </div>
       )}
     </header>

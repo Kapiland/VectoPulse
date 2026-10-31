@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateMatchExplanationWithGemma } from "@/lib/ai/gemma";
+import { getAIModelInfo } from "@/lib/ai/config";
+import { requireApiUser, unauthorizedResponse } from "@/lib/supabase/api";
 
 export async function POST(req: NextRequest) {
+  const auth = await requireApiUser();
+  if (!auth.user) return unauthorizedResponse();
+  if (!getAIModelInfo().is_live_configured) {
+    return NextResponse.json({ error: "AI is not configured. Add a valid GEMINI_API_KEY." }, { status: 503 });
+  }
   try {
     const body = await req.json();
     const { requesterNeed, candidate, compatibilityScore, matchingSkills, missingSkills } = body;

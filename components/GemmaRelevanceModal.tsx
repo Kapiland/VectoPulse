@@ -1,17 +1,29 @@
 "use client";
 
 import { useState } from "react";
-import { 
-  Sparkles, 
-  X, 
-  Languages, 
-  CheckCircle2, 
-  ExternalLink, 
+import {
+  Sparkles,
+  X,
+  CheckCircle2,
+  ExternalLink,
   AlertCircle,
   Clock,
-  Compass
+  Compass,
+  LoaderCircle,
 } from "lucide-react";
 import { Opportunity } from "@/types";
+import { z } from "zod";
+
+const RelevanceResultSchema = z.object({
+  summary_en: z.string(),
+  summary_hi: z.string().optional(),
+  recommended_for: z.string(),
+  urgency_level: z.enum(["High", "Medium", "Low"]),
+  model_used: z.string(),
+  is_live_ai: z.boolean(),
+});
+
+type RelevanceResult = z.infer<typeof RelevanceResultSchema>;
 
 interface GemmaRelevanceModalProps {
   opportunity: Opportunity | null;
@@ -26,14 +38,45 @@ export default function GemmaRelevanceModal({
 }: GemmaRelevanceModalProps) {
   const [languageMode, setLanguageMode] = useState<"en" | "hi">("en");
   const [loading, setLoading] = useState(false);
-  const [gemmaData, setGemmaData] = useState<{
-    summary_en: string;
-    summary_hi?: string;
-    recommended_for: string;
-    urgency_level: "High" | "Medium" | "Low";
-    model_used: string;
-    is_live_ai: boolean;
-  } | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [gemmaData, setGemmaData] = useState<RelevanceResult | null>(null);
+
+  const handleGenerate = async () => {
+    if (!opportunity) return;
+
+    setLoading(true);
+    setErrorMessage(null);
+    setGemmaData(null);
+
+    try {
+      const response = await fetch("/api/ai/classify-opportunity", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: opportunity.title,
+          category: opportunity.category,
+          organization: opportunity.organization,
+          eligibility: opportunity.eligibility,
+          skills: opportunity.required_skills,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success || !result.data) {
+        throw new Error(result.error || "Could not generate the AI relevance analysis.");
+      }
+
+      const parsed = RelevanceResultSchema.safeParse(result.data);
+      if (!parsed.success) {
+        throw new Error("The AI service returned an invalid relevance response.");
+      }
+
+      setGemmaData(parsed.data);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Could not reach the AI service.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (!isOpen || !opportunity) return null;
 
@@ -114,18 +157,50 @@ export default function GemmaRelevanceModal({
               <span>Gemma AI Career Rationale</span>
             </div>
             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
-              Verified Gemma Adapter
+              {gemmaData?.is_live_ai ? `Live · ${gemmaData.model_used}` : "Not generated"}
             </span>
           </div>
 
+          {errorMessage && (
+            <p role="alert" className="flex items-start gap-2 text-xs text-red-300">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              {errorMessage}
+            </p>
+          )}
+
           <p className="text-xs text-slate-200 leading-relaxed">
-            {languageMode === "en" ? (
-              opportunity.ai_relevance_summary ||
-              `This ${opportunity.category.toLowerCase()} by ${opportunity.organization} provides high-yield exposure in ${opportunity.required_skills.join(", ") || "core technical domains"}. Ideal for building resume-worthy artifacts before final placement season.`
-            ) : (
-              `Ye ${opportunity.category} ${opportunity.organization} ki taraf se hai. Agar aap ${opportunity.required_skills.slice(0, 3).join(", ") || "development"} me career banana chahte hain, to isme participate karne se direct practical exposure aur network milega.`
-            )}
+            {gemmaData
+              ? languageMode === "en"
+                ? gemmaData.summary_en
+                : gemmaData.summary_hi || gemmaData.summary_en
+              : "Generate an analysis to see how this opportunity fits student skills and goals."}
           </p>
+
+          {gemmaData && (
+            <div className="flex flex-wrap gap-3 text-[11px] text-slate-300">
+              <span>Recommended for: {gemmaData.recommended_for}</span>
+              <span>Urgency: {gemmaData.urgency_level}</span>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={handleGenerate}
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading ? (
+              <>
+                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-3.5 w-3.5" />
+                {gemmaData ? "Regenerate analysis" : "Generate AI analysis"}
+              </>
+            )}
+          </button>
 
           <div className="pt-2 border-t border-purple-500/20 grid grid-cols-2 gap-2 text-[11px]">
             <div>

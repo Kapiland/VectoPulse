@@ -1,7 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useState, useEffect, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useState } from "react";
 import Link from "next/link";
 import { 
   Sparkles, 
@@ -24,17 +23,12 @@ import {
 import confetti from "canvas-confetti";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import DemoModal from "@/components/DemoModal";
-import { DEMO_NOTICES } from "@/lib/data/mock-data";
 import { ExtractedNoticeResponse, OpportunityCategory } from "@/types";
-import { CATEGORIES, SOURCE_TYPES, VERIFICATION_STATUSES } from "@/lib/schemas";
+import { CATEGORIES } from "@/lib/schemas";
 
-function NoticeIntelligenceContent() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
+function NoticeIntelligenceForm() {
 
   const [activeTab, setActiveTab] = useState<"text" | "upload">("text");
-  const [demoModalOpen, setDemoModalOpen] = useState(false);
   const [inputText, setInputText] = useState("");
   const [uploadedImageBase64, setUploadedImageBase64] = useState<string | null>(null);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
@@ -45,21 +39,6 @@ function NoticeIntelligenceContent() {
   const [savedSuccessId, setSavedSuccessId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [newSkillInput, setNewSkillInput] = useState("");
-
-  // Handle URL query pre-population (e.g. ?demo=hackathon)
-  useEffect(() => {
-    const demoType = searchParams.get("demo");
-    if (demoType === "hackathon") {
-      setInputText(DEMO_NOTICES.hackathon.text);
-      setActiveTab("text");
-    } else if (demoType === "internship") {
-      setInputText(DEMO_NOTICES.internship.text);
-      setActiveTab("text");
-    } else if (demoType === "workshop") {
-      setInputText(DEMO_NOTICES.workshop.text);
-      setActiveTab("text");
-    }
-  }, [searchParams]);
 
   // Handle file drag/drop or input
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -198,7 +177,7 @@ function NoticeIntelligenceContent() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      <Navbar onOpenDemo={() => setDemoModalOpen(true)} />
+      <Navbar />
 
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
         {/* Header Title */}
@@ -235,8 +214,12 @@ function NoticeIntelligenceContent() {
             <div className="flex items-center gap-2.5">
               <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
               <div>
-                <div className="font-semibold text-white">Successfully Published to Smart Opportunity Radar!</div>
-                <div className="text-[11px] text-emerald-300">Your campus opportunity is now visible to all students.</div>
+                <div className="font-semibold text-white">
+                  Saved to Smart Opportunity Radar.
+                </div>
+                <div className="text-[11px] text-emerald-300">
+                  This opportunity is stored in your connected database.
+                </div>
               </div>
             </div>
             <Link
@@ -279,44 +262,9 @@ function NoticeIntelligenceContent() {
                   </button>
                 </div>
 
-                <span className="text-[10px] text-slate-400 font-mono">Gemini 2.5</span>
+                <span className="text-[10px] text-slate-400 font-mono">Gemini 3.8 Flash</span>
               </div>
 
-              {/* Sample Preset Buttons */}
-              <div className="mb-4">
-                <span className="text-[11px] font-semibold text-slate-300 block mb-2">
-                  Quick Judge Presets (1-Click Load):
-                </span>
-                <div className="grid grid-cols-3 gap-1.5">
-                  <button
-                    onClick={() => {
-                      setInputText(DEMO_NOTICES.hackathon.text);
-                      setActiveTab("text");
-                    }}
-                    className="p-1.5 rounded bg-slate-800/80 hover:bg-slate-700 text-[11px] text-cyan-300 border border-slate-700 truncate"
-                  >
-                    DevSprint SIH
-                  </button>
-                  <button
-                    onClick={() => {
-                      setInputText(DEMO_NOTICES.internship.text);
-                      setActiveTab("text");
-                    }}
-                    className="p-1.5 rounded bg-slate-800/80 hover:bg-slate-700 text-[11px] text-purple-300 border border-slate-700 truncate"
-                  >
-                    Zomato Intern
-                  </button>
-                  <button
-                    onClick={() => {
-                      setInputText(DEMO_NOTICES.workshop.text);
-                      setActiveTab("text");
-                    }}
-                    className="p-1.5 rounded bg-slate-800/80 hover:bg-slate-700 text-[11px] text-amber-300 border border-slate-700 truncate"
-                  >
-                    GDG Workshop
-                  </button>
-                </div>
-              </div>
 
               {/* Tab 1: Text Area */}
               {activeTab === "text" && (
@@ -430,10 +378,6 @@ function NoticeIntelligenceContent() {
                       <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                         Live Gemini Output
                       </span>
-                    ) : editableForm ? (
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/20 text-cyan-300 border border-blue-500/30">
-                        Heuristic Verified
-                      </span>
                     ) : null}
                   </div>
                   <span className="text-[10px] text-slate-400">Human-In-The-Loop Validation</span>
@@ -444,17 +388,8 @@ function NoticeIntelligenceContent() {
                   <div className="h-80 flex flex-col items-center justify-center text-center p-6 text-slate-500">
                     <FileText className="w-12 h-12 mb-3 text-slate-700 animate-pulse" />
                     <p className="text-xs text-slate-400 max-w-sm mb-2">
-                      No notice extracted yet. Paste a WhatsApp forward on the left or select a 1-click preset.
+                      No notice extracted yet. Paste a WhatsApp forward on the left or upload a circular.
                     </p>
-                    <button
-                      onClick={() => {
-                        setInputText(DEMO_NOTICES.hackathon.text);
-                        setActiveTab("text");
-                      }}
-                      className="text-xs text-cyan-400 hover:underline"
-                    >
-                      Load Sample DevSprint Hackathon Notice →
-                    </button>
                   </div>
                 ) : (
                   /* Form fields */
@@ -571,7 +506,7 @@ function NoticeIntelligenceContent() {
                               onClick={() => handleRemoveSkill(skill)}
                               className="text-slate-400 hover:text-red-400"
                             >
-                              ×
+                              Ã—
                             </button>
                           </span>
                         ))}
@@ -646,15 +581,10 @@ function NoticeIntelligenceContent() {
       </main>
 
       <Footer />
-      <DemoModal isOpen={demoModalOpen} onClose={() => setDemoModalOpen(false)} />
     </div>
   );
 }
 
-export default function NoticeIntelligencePage() {
-  return (
-    <Suspense fallback={<div className="min-h-screen bg-[#070b14] flex items-center justify-center text-slate-400 text-xs">Loading Notice AI...</div>}>
-      <NoticeIntelligenceContent />
-    </Suspense>
-  );
-}
+export default function NoticeIntelligencePage() { return <NoticeIntelligenceForm />; }
+
+

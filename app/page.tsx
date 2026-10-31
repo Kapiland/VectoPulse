@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { 
   Sparkles, 
@@ -10,7 +9,6 @@ import {
   Users, 
   CheckCircle2, 
   ShieldCheck, 
-  Play, 
   Cpu, 
   Zap, 
   TrendingUp, 
@@ -20,14 +18,11 @@ import {
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import DemoModal from "@/components/DemoModal";
 
 export default function LandingPage() {
-  const [demoModalOpen, setDemoModalOpen] = useState(false);
-
   return (
     <div className="flex flex-col min-h-screen">
-      <Navbar onOpenDemo={() => setDemoModalOpen(true)} />
+      <Navbar />
 
       <main className="flex-1">
         {/* HERO SECTION */}
@@ -57,19 +52,18 @@ export default function LandingPage() {
 
             {/* Subtitle */}
             <p className="text-base sm:text-xl text-slate-300 max-w-2xl mx-auto mb-10 leading-relaxed font-normal">
-              Indian college students miss over 70% of hackathons, internships, and circulars buried in chaotic WhatsApp forwards. 
-              CampusSignal AI converts scattered notices into structured intelligence and matches you with the right teammates.
+              Find campus opportunities in one place, keep your applications organized, and meet students with skills your projects need.
             </p>
 
             {/* Action CTA Buttons */}
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
-              <button
-                onClick={() => setDemoModalOpen(true)}
+              <Link
+                href="/auth?mode=signup"
                 className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold text-sm shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:-translate-y-0.5 transition-all cursor-pointer"
               >
-                <Play className="w-4 h-4 fill-white" />
-                <span>Try Live Demo (60-Sec Flow)</span>
-              </button>
+                <span>Create your account</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
 
               <Link
                 href="/notice-intelligence"
@@ -89,23 +83,23 @@ export default function LandingPage() {
               </Link>
             </div>
 
-            {/* Indian Campus Metric Highlights */}
+            {/* Core product capabilities */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto pt-6 border-t border-slate-800/80 text-left">
               <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800">
-                <div className="text-2xl font-bold text-white mb-1">43,000+</div>
-                <div className="text-xs text-slate-400">Indian Colleges & Campuses</div>
+                <div className="text-lg font-bold text-white mb-1">Your account</div>
+                <div className="text-xs text-slate-400">Email sign in</div>
               </div>
               <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800">
-                <div className="text-2xl font-bold text-cyan-400 mb-1">&lt; 3.0s</div>
-                <div className="text-xs text-slate-400">Multimodal Notice Extraction</div>
+                <div className="text-lg font-bold text-cyan-400 mb-1">Live data</div>
+                <div className="text-xs text-slate-400">Saved in Supabase</div>
               </div>
               <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800">
-                <div className="text-2xl font-bold text-purple-400 mb-1">100%</div>
-                <div className="text-xs text-slate-400">Deterministic Scoring Formula</div>
+                <div className="text-lg font-bold text-purple-400 mb-1">AI assisted</div>
+                <div className="text-xs text-slate-400">Notice and opportunity analysis</div>
               </div>
               <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800">
-                <div className="text-2xl font-bold text-emerald-400 mb-1">0%</div>
-                <div className="text-xs text-slate-400">Corporate Spam or Ad Bloat</div>
+                <div className="text-lg font-bold text-emerald-400 mb-1">Student profiles</div>
+                <div className="text-xs text-slate-400">Find collaborators by skills</div>
               </div>
             </div>
           </div>
@@ -325,19 +319,19 @@ export default function LandingPage() {
                     Hackathon Evaluation Ready
                   </span>
                   <h3 className="text-2xl sm:text-3xl font-bold text-white mb-2">
-                    Experience the 60-Second Live Judge Demo
+                    Create your student workspace
                   </h3>
                   <p className="text-slate-300 text-xs sm:text-sm max-w-xl">
-                    Preloaded with realistic Indian hackathon posters, Zomato SDE circulars, and student engineering profiles. Test all 3 core journeys instantly.
+                    Sign up to save opportunities, build your profile, and find collaborators from the student community.
                   </p>
                 </div>
-                <button
-                  onClick={() => setDemoModalOpen(true)}
+                <Link
+                  href="/auth?mode=signup"
                   className="shrink-0 flex items-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-sm shadow-lg shadow-cyan-500/25 transition-all hover:scale-105 cursor-pointer"
                 >
-                  <Play className="w-4 h-4 fill-slate-950" />
-                  <span>Start 60s Demo</span>
-                </button>
+                  <span>Create account</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
               </div>
             </div>
           </div>
@@ -345,7 +339,6 @@ export default function LandingPage() {
       </main>
 
       <Footer />
-      <DemoModal isOpen={demoModalOpen} onClose={() => setDemoModalOpen(false)} />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+﻿import { GoogleGenAI } from "@google/genai";
 import { ExtractedNoticeResponse, OpportunityCategory } from "@/types";
 import { ExtractedOpportunityZodSchema } from "@/lib/schemas";
 import { AI_CONFIG } from "./config";
@@ -13,7 +13,7 @@ CRITICAL SECURITY AND EXTRACTION RULES:
    - If a registration link is not explicitly written, output "https://campussignal.internal/unverified-link".
    - If a deadline is not specified, output "Unknown / To be announced".
    - If eligibility is not specified, output "Open to all students or criteria not specified".
-3. INDIAN CAMPUS CONTEXT: Accurately parse Indian degree abbreviations (B.Tech, BE, MCA, BCA, M.Tech, Dual Degree), Indian currency (₹, INR, Lakhs), semester years, and CGPA requirements.
+3. INDIAN CAMPUS CONTEXT: Accurately parse Indian degree abbreviations (B.Tech, BE, MCA, BCA, M.Tech, Dual Degree), Indian currency (â‚¹, INR, Lakhs), semester years, and CGPA requirements.
 4. CATEGORY: Choose exactly one from: "Hackathons", "Internships", "Workshops", "Scholarships", "Competitions", "Campus events", "Tech conferences".
 5. OUTPUT FORMAT: Return ONLY a raw JSON object with these exact keys:
 {
@@ -78,12 +78,12 @@ export async function extractNoticeWithGemini(params: {
         is_live_ai: true,
       };
     } catch (error) {
-      console.warn("Live Gemini API call failed or encountered error, falling back to heuristic parser:", error);
+      console.error("Gemini notice extraction failed:", error);
+      throw new Error("Gemini request failed. Check the API key, selected model, and quota.");
     }
   }
 
-  // Graceful deterministic heuristic fallback
-  return runHeuristicNoticeExtraction(text);
+  throw new Error("GEMINI_API_KEY is required for notice extraction.");
 }
 
 function cleanJsonResponse(raw: string): string {
@@ -100,109 +100,3 @@ function cleanJsonResponse(raw: string): string {
   return cleaned.trim();
 }
 
-// Deterministic heuristic rule-based extraction fallback
-function runHeuristicNoticeExtraction(text: string): ExtractedNoticeResponse {
-  const content = text || "";
-  const lines = content.split("\n").map((l) => l.trim()).filter(Boolean);
-
-  // Extract title
-  let title = "Campus Opportunity Notice";
-  for (const line of lines) {
-    if (line.match(/(hackathon|internship|workshop|scholarship|challenge|drive|sprint|ctf)/i)) {
-      title = line.replace(/^[🚀📢*#\s-]+/, "").replace(/[*#]/g, "").slice(0, 90).trim();
-      break;
-    }
-  }
-  if (lines.length > 0 && title === "Campus Opportunity Notice") {
-    title = lines[0].replace(/^[🚀📢*#\s-]+/, "").replace(/[*#]/g, "").slice(0, 90).trim();
-  }
-
-  // Infer Category
-  let category: OpportunityCategory = "Hackathons";
-  const lower = content.toLowerCase();
-  if (lower.includes("internship") || lower.includes("intern") || lower.includes("stipend")) {
-    category = "Internships";
-  } else if (lower.includes("workshop") || lower.includes("masterclass") || lower.includes("bootcamp")) {
-    category = "Workshops";
-  } else if (lower.includes("scholarship") || lower.includes("grant") || lower.includes("financial aid")) {
-    category = "Scholarships";
-  } else if (lower.includes("ctf") || lower.includes("contest") || lower.includes("competition")) {
-    category = "Competitions";
-  } else if (lower.includes("conference") || lower.includes("summit")) {
-    category = "Tech conferences";
-  } else if (lower.includes("fest") || lower.includes("campus event") || lower.includes("cultural")) {
-    category = "Campus events";
-  }
-
-  // Extract Organization
-  let organization = "Campus Community / Student Council";
-  const orgMatch = content.match(/(?:organized by|organization|department of|company|host):\s*([^\n\r.]+)/i);
-  if (orgMatch && orgMatch[1]) {
-    organization = orgMatch[1].trim();
-  } else if (lower.includes("iit delhi")) {
-    organization = "IEEE Student Branch, IIT Delhi";
-  } else if (lower.includes("zomato")) {
-    organization = "Zomato Technologies";
-  } else if (lower.includes("google") || lower.includes("gdg")) {
-    organization = "Google Developer Groups On Campus";
-  }
-
-  // Extract URL
-  let registration_url = "https://campussignal.internal/unverified-link";
-  const urlMatch = content.match(/https?:\/\/[^\s)\]]+/i);
-  if (urlMatch) {
-    registration_url = urlMatch[0];
-  }
-
-  // Extract Deadline
-  let deadline = "Unknown / Check Portal";
-  const deadlineMatch = content.match(/(?:deadline|last date|register by|closes on|due date):\s*([^\n\r]+)/i);
-  if (deadlineMatch && deadlineMatch[1]) {
-    deadline = deadlineMatch[1].trim();
-  } else {
-    // Generate an upcoming deadline for testing
-    deadline = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-  }
-
-  // Extract Eligibility
-  let eligibility = "Open to all undergraduate & postgraduate students";
-  const eligMatch = content.match(/(?:eligibility|who can apply|criteria):\s*([^\n\r]+)/i);
-  if (eligMatch && eligMatch[1]) {
-    eligibility = eligMatch[1].trim();
-  }
-
-  // Extract Skills
-  const knownSkills = [
-    "Python", "Next.js", "React", "TypeScript", "FastAPI", "Docker", "Kubernetes",
-    "Go", "PyTorch", "TensorFlow", "Tailwind CSS", "Figma", "Node.js", "SQL",
-    "Git", "GitHub", "Flutter", "Solidity", "Linux", "Burp Suite"
-  ];
-  const detectedSkills = knownSkills.filter((skill) =>
-    content.toLowerCase().includes(skill.toLowerCase())
-  );
-  const required_skills = detectedSkills.length > 0 ? detectedSkills : ["Problem Solving", "Collaboration"];
-
-  // Documents
-  const required_documents = ["College Identity Card"];
-  if (lower.includes("resume")) required_documents.push("Updated Resume (PDF)");
-  if (lower.includes("transcript") || lower.includes("marksheet")) required_documents.push("Academic Transcript");
-  if (lower.includes("github")) required_documents.push("GitHub Profile");
-
-  return {
-    title,
-    category,
-    organization,
-    description: content.slice(0, 320) || "Opportunity extracted from campus circular.",
-    eligibility,
-    required_skills,
-    deadline,
-    event_date: "Refer to circular details",
-    location: lower.includes("online") ? "Online Virtual Track" : lower.includes("campus") ? "On Campus" : "Hybrid",
-    registration_url,
-    required_documents,
-    important_instructions: "Please verify all prerequisites on the official registration link before submitting.",
-    confidence_notes: "Parsed using deterministic campus heuristic parser. Configure GEMINI_API_KEY in .env.local for live Gemini multimodal AI.",
-    model_used: "Heuristic Document Parser (Rule-based Fallback)",
-    is_live_ai: false,
-  };
-}

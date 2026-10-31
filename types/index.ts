@@ -19,6 +19,7 @@ export interface Student {
   skills: string[];
   interests: string[];
   preferred_roles: string[];
+  is_discoverable?: boolean;
   experience_level: "Beginner" | "Intermediate" | "Advanced";
   project_interests: string;
   avatar_url?: string;

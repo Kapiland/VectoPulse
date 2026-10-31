@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+﻿import { GoogleGenAI } from "@google/genai";
 import { AI_CONFIG } from "./config";
 import { Student } from "@/types";
 
@@ -77,20 +77,12 @@ Provide a strictly valid JSON response without markdown fences:
         is_live_ai: true,
       };
     } catch (error: unknown) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      console.warn(`Gemma API call (${AI_CONFIG.defaultGemmaModel}) encountered an issue:`, errMsg);
-      // Transparent reporting as required by Section 4
-      return generateHeuristicMatchExplanation(candidate, requesterNeed, matchingSkills, compatibilityScore, `Gemma model "${AI_CONFIG.defaultGemmaModel}" unreachable via quota: ${errMsg.slice(0, 80)}. Using heuristic adapter.`);
+      console.error("Gemma match explanation failed:", error);
+      throw new Error("Gemma request failed. Check the API key, selected model, and quota.");
     }
   }
 
-  return generateHeuristicMatchExplanation(
-    candidate,
-    requesterNeed,
-    matchingSkills,
-    compatibilityScore,
-    "Development mode: Configure GEMINI_API_KEY & GEMMA_MODEL in .env for live Gemma inference."
-  );
+  throw new Error("GEMINI_API_KEY is required for teammate explanations.");
 }
 
 /**
@@ -142,38 +134,12 @@ Respond with strictly valid JSON only:
         model_used: modelName,
         is_live_ai: true,
       };
-    } catch {
-      // fallback
+    } catch (error: unknown) {
+      console.error("Gemma opportunity relevance failed:", error);
+      throw new Error("Gemma request failed. Check the API key, selected model, and quota.");
     }
   }
 
-  return {
-    summary_en: `This ${category.toLowerCase().slice(0, -1) || "opportunity"} from ${organization} offers practical hands-on exposure in ${skills.slice(0, 3).join(", ") || "technology"} and strengthens your profile for placement season.`,
-    summary_hi: `Ye ${organization} ki taraf se ek valuable opportunity hai, jo students ${skills[0] || "development"} me interested hain unhe jarur apply karna chahiye.`,
-    recommended_for: `Students skilled in ${skills.slice(0, 2).join(", ") || "core technical areas"}`,
-    urgency_level: "High",
-    model_used: "Gemma Heuristic Fallback Adapter",
-    is_live_ai: false,
-  };
+  throw new Error("GEMINI_API_KEY is required for opportunity analysis.");
 }
 
-function generateHeuristicMatchExplanation(
-  candidate: Student,
-  requesterNeed: string,
-  matchingSkills: string[],
-  score: number,
-  statusNote?: string
-): GemmaExplanationResult {
-  const topSkills = matchingSkills.length > 0 ? matchingSkills.slice(0, 3).join(", ") : candidate.skills.slice(0, 2).join(", ");
-  const roles = candidate.preferred_roles.join(" & ");
-
-  return {
-    english: `${candidate.display_name} is an exceptional ${candidate.experience_level} match (${score}%) with demonstrated strengths in ${topSkills}. Their role preference as a ${roles} directly fills the core technical requirements of "${requesterNeed.slice(0, 60)}".`,
-    hindi_simple: `${candidate.display_name} ka background aur ${topSkills} me experience aapki hackathon team ke liye kaafi strong fit hai.`,
-    key_strengths: candidate.skills.slice(0, 4),
-    suggested_synergy: `Have ${candidate.display_name} lead the ${candidate.preferred_roles[0] || "technical"} architecture while collaborating on rapid MVP deployment.`,
-    model_used: AI_CONFIG.defaultGemmaModel + " (Fallback Adapter)",
-    is_live_ai: false,
-    status_message: statusNote,
-  };
-}

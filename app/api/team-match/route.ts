@@ -3,8 +3,11 @@ import { TeamMatchQuerySchema } from "@/lib/schemas";
 import { getStudents } from "@/lib/data/store";
 import { matchTeammates } from "@/lib/ai/matcher";
 import { getAIModelInfo } from "@/lib/ai/config";
+import { requireApiUser, unauthorizedResponse } from "@/lib/supabase/api";
 
 export async function POST(req: NextRequest) {
+  const auth = await requireApiUser();
+  if (!auth.user) return unauthorizedResponse();
   try {
     const body = await req.json();
     const parsed = TeamMatchQuerySchema.safeParse(body);
@@ -16,14 +19,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { query, requester_id } = parsed.data;
+    const { query } = parsed.data;
 
     const { data: candidates } = await getStudents();
 
     const matches = await matchTeammates({
       requirement: query,
       candidates,
-      excludeStudentId: requester_id,
+      excludeStudentId: auth.user.id,
     });
 
     const modelInfo = getAIModelInfo();

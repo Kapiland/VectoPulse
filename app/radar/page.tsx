@@ -22,10 +22,8 @@ import {
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import DemoModal from "@/components/DemoModal";
 import GemmaRelevanceModal from "@/components/GemmaRelevanceModal";
 import { Opportunity, OpportunityCategory, VerificationStatus, ApplicationStatus } from "@/types";
-import { INITIAL_OPPORTUNITIES } from "@/lib/data/mock-data";
 import { formatTimeRemaining } from "@/lib/utils";
 
 const CATEGORY_TABS = [
@@ -42,74 +40,77 @@ const CATEGORY_TABS = [
 const VERIFICATION_OPTIONS = ["All", "Officially sourced", "User submitted", "Unverified"];
 
 export default function OpportunityRadarPage() {
-  const [demoModalOpen, setDemoModalOpen] = useState(false);
-  const [opportunities, setOpportunities] = useState<Opportunity[]>(INITIAL_OPPORTUNITIES);
+  const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedVerification, setSelectedVerification] = useState("All");
   const [sortBy, setSortBy] = useState<"deadline" | "newest">("deadline");
   const [selectedOpportunityForGemma, setSelectedOpportunityForGemma] = useState<Opportunity | null>(null);
+  const [errorMessage, setErrorMessage] = useState("");
 
   // Application status mapping: opportunityId -> status
-  const [applicationStatuses, setApplicationStatuses] = useState<Record<string, ApplicationStatus>>({
-    "opp-sih-2026": "Interested",
-    "opp-msr-intern-2026": "Applied",
-  });
-
-  const fetchOpportunities = async () => {
-    try {
-      setLoading(true);
-      const params = new URLSearchParams();
-      if (selectedCategory !== "All") params.append("category", selectedCategory);
-      if (selectedVerification !== "All") params.append("verification", selectedVerification);
-      if (searchQuery) params.append("q", searchQuery);
-      params.append("sort", sortBy);
-
-      const res = await fetch(`/api/opportunities?${params.toString()}`);
-      const json = await res.json();
-      if (json.success && json.data) {
-        setOpportunities(json.data);
-      }
-    } catch {
-      // Fallback
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [applicationStatuses, setApplicationStatuses] = useState<Record<string, ApplicationStatus>>({});
 
   useEffect(() => {
-    fetchOpportunities();
+    let isCurrent = true;
+    const params = new URLSearchParams();
+    if (selectedCategory !== "All") params.append("category", selectedCategory);
+    if (selectedVerification !== "All") params.append("verification", selectedVerification);
+    if (searchQuery) params.append("q", searchQuery);
+    params.append("sort", sortBy);
+
+    async function loadOpportunities() {
+      try {
+        const [opportunityRes, savedRes] = await Promise.all([
+          fetch(`/api/opportunities?${params.toString()}`),
+          fetch("/api/saved-opportunities"),
+        ]);
+        const [json, saved] = await Promise.all([opportunityRes.json(), savedRes.json()]);
+        if (!opportunityRes.ok || !json.success) throw new Error(json.error || "Could not load opportunities.");
+        if (isCurrent) setOpportunities(json.data ?? []);
+        if (isCurrent && savedRes.ok && saved.success) {
+          setApplicationStatuses(Object.fromEntries(saved.data.map((item: { opportunity_id: string; application_status: ApplicationStatus }) => [item.opportunity_id, item.application_status])));
+        }
+      } catch {
+        if (isCurrent) setOpportunities([]);
+      } finally {
+        if (isCurrent) setLoading(false);
+      }
+    }
+
+    void loadOpportunities();
+    return () => {
+      isCurrent = false;
+    };
   }, [selectedCategory, selectedVerification, sortBy, searchQuery]);
 
   // Handle status update (Interested -> Applied -> Completed)
   const handleUpdateStatus = async (oppId: string, newStatus: ApplicationStatus) => {
-    setApplicationStatuses((prev) => ({
-      ...prev,
-      [oppId]: newStatus,
-    }));
-
     try {
-      await fetch("/api/opportunities", {
+      const response = await fetch("/api/opportunities", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "update_status",
-          student_id: "11111111-1111-1111-1111-111111111111",
           opportunity_id: oppId,
           status: newStatus,
         }),
       });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || "Could not update saved status.");
+      setApplicationStatuses((prev) => ({ ...prev, [oppId]: newStatus }));
     } catch {
-      // ignore
+      setErrorMessage("Could not save this status. Please try again.");
     }
   };
 
   return (
     <div className="flex flex-col min-h-screen">
-      <Navbar onOpenDemo={() => setDemoModalOpen(true)} />
+      <Navbar />
 
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+        {errorMessage && <div role="alert" className="mb-5 rounded-xl border border-red-500/30 bg-red-950/30 p-3 text-sm text-red-300">{errorMessage}</div>}
         {/* Top Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
@@ -149,7 +150,10 @@ export default function OpportunityRadarPage() {
                 type="text"
                 placeholder="Search by title, organization, or required skills (e.g. SIH, Python, Next.js)..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setLoading(true);
+                  setSearchQuery(e.target.value);
+                }}
                 className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
               />
             </div>
@@ -159,7 +163,10 @@ export default function OpportunityRadarPage() {
               <span className="text-xs text-slate-400 whitespace-nowrap">Source:</span>
               <select
                 value={selectedVerification}
-                onChange={(e) => setSelectedVerification(e.target.value)}
+                onChange={(e) => {
+                  setLoading(true);
+                  setSelectedVerification(e.target.value);
+                }}
                 className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
               >
                 {VERIFICATION_OPTIONS.map((opt) => (
@@ -171,7 +178,10 @@ export default function OpportunityRadarPage() {
 
               {/* Sort By */}
               <button
-                onClick={() => setSortBy(sortBy === "deadline" ? "newest" : "deadline")}
+                onClick={() => {
+                  setLoading(true);
+                  setSortBy(sortBy === "deadline" ? "newest" : "deadline");
+                }}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 whitespace-nowrap transition-colors"
               >
                 <ArrowUpDown className="w-3.5 h-3.5 text-cyan-400" />
@@ -185,7 +195,10 @@ export default function OpportunityRadarPage() {
             {CATEGORY_TABS.map((cat) => (
               <button
                 key={cat}
-                onClick={() => setSelectedCategory(cat)}
+                onClick={() => {
+                  setLoading(true);
+                  setSelectedCategory(cat);
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
                   selectedCategory === cat
                     ? "bg-purple-600/30 text-purple-200 border border-purple-500/50 shadow-sm"
@@ -224,6 +237,7 @@ export default function OpportunityRadarPage() {
             </p>
             <button
               onClick={() => {
+                setLoading(true);
                 setSelectedCategory("All");
                 setSelectedVerification("All");
                 setSearchQuery("");
@@ -365,7 +379,6 @@ export default function OpportunityRadarPage() {
       </main>
 
       <Footer />
-      <DemoModal isOpen={demoModalOpen} onClose={() => setDemoModalOpen(false)} />
       <GemmaRelevanceModal
         opportunity={selectedOpportunityForGemma}
         isOpen={Boolean(selectedOpportunityForGemma)}
