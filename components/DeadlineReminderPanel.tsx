@@ -27,9 +27,14 @@ export default function DeadlineReminderPanel({ opportunities, saved }: Props) {
     const tick = () => setNow(Date.now());
     tick();
     const id = window.setInterval(tick, 60_000);
-    if ("Notification" in window) setPermission(Notification.permission);
-    else setPermission("unsupported");
-    return () => window.clearInterval(id);
+    const permissionTimer = window.setTimeout(() => {
+      if ("Notification" in window) setPermission(Notification.permission);
+      else setPermission("unsupported");
+    }, 0);
+    return () => {
+      window.clearInterval(id);
+      window.clearTimeout(permissionTimer);
+    };
   }, []);
 
   const tracked = useMemo(() => {
